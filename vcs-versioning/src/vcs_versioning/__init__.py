@@ -19,6 +19,12 @@ from ._pyproject_reading import PyProjectData
 from ._scm_version import ScmVersion
 from ._version_cls import NonNormalizedVersion, Version
 from ._version_inference import infer_version_string
+from ._version_sources import (
+    VersionSource,
+    VersionSourceConflict,
+    check_version_sources,
+    collect_strong_version_sources,
+)
 
 
 def build_configuration_from_pyproject(
@@ -113,7 +119,11 @@ __all__ = [
     "TagConfiguration",
     "VcsEnvironment",
     "Version",
+    "VersionSource",
+    "VersionSourceConflict",
     "build_configuration_from_pyproject",
+    "check_version_sources",
+    "collect_strong_version_sources",
     "infer_version_string",
 ]
 
