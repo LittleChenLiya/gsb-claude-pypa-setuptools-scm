@@ -19,6 +19,13 @@ from ._pyproject_reading import PyProjectData
 from ._scm_version import ScmVersion
 from ._version_cls import NonNormalizedVersion, Version
 from ._version_inference import infer_version_string
+from ._version_snapshot import (
+    SnapshotCaptureError,
+    SnapshotSource,
+    VersionSourceSnapshot,
+    capture_git_snapshot,
+    version_from_git_snapshot,
+)
 
 
 def build_configuration_from_pyproject(
@@ -110,15 +117,25 @@ __all__ = [
     "NonNormalizedVersion",
     "PyProjectData",
     "ScmVersion",
+    "SnapshotCaptureError",
+    "SnapshotSource",
     "TagConfiguration",
     "VcsEnvironment",
     "Version",
+    "VersionSourceSnapshot",
     "build_configuration_from_pyproject",
+    "capture_git_snapshot",
     "infer_version_string",
+    "version_from_git_snapshot",
 ]
 
 # Experimental API markers for documentation
 __experimental__ = [
     "PyProjectData",
+    "SnapshotCaptureError",
+    "SnapshotSource",
+    "VersionSourceSnapshot",
     "build_configuration_from_pyproject",
+    "capture_git_snapshot",
+    "version_from_git_snapshot",
 ]
