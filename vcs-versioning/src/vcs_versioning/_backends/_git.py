@@ -119,6 +119,13 @@ def run_git(
 class GitWorkdir(Workdir):
     """experimental, may change at any time"""
 
+    version_source_category: ClassVar[str | None] = "git"
+    """Plain git is a strong source cross-checked against ``PKG-INFO``.
+
+    ``GitWorkdirHgClient`` overrides this back to ``None``: an hg-git hybrid
+    reports its version through mercurial, so it is not the git source.
+    """
+
     supports_distance_scope: ClassVar[bool] = True
     """Whether ``scm.git.distance_scope`` can be honoured for this workdir.
 

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from dataclasses import field as dc_field
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, overload
+from typing import TYPE_CHECKING, Any, ClassVar, overload
 
 from .._scm_version import ScmVersion
 
@@ -159,6 +159,13 @@ class ScmWorkdir:
 
     _config: Configuration | None = dc_field(default=None, repr=False, compare=False)
     """Back-reference to the ``Configuration`` that discovered this workdir."""
+
+    version_source_category: ClassVar[str | None] = None
+    """Strong-source category this VCS counts as for consistency checking.
+
+    Only plain git sets this (to ``"git"``); other VCSs and unknown/fake
+    workdirs stay ``None`` and never take part in the git vs PKG-INFO check.
+    """
 
     @property
     def _subprocess_timeout(self) -> int | None:

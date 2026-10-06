@@ -28,6 +28,9 @@ class GitWorkdirHgClient(GitWorkdir, HgWorkdir):
     # describe is emulated through mercurial, and run_git would point at a
     # .git directory that does not exist here -- see resolve_scope_paths.
     supports_distance_scope: ClassVar[bool] = False
+    # Versions come from mercurial here, so this hybrid is not the strong
+    # git source cross-checked against PKG-INFO.
+    version_source_category: ClassVar[str | None] = None
 
     @classmethod
     def from_potential_worktree(

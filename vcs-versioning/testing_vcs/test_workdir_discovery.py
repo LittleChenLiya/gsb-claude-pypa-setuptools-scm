@@ -168,8 +168,11 @@ class TestDiscoverWorkdirFallback:
         assert isinstance(result, PkgInfoWorkdir)
 
     def test_scm_preferred_over_fallback(self, tmp_path: Path) -> None:
-        """SCM markers should be preferred over fallback markers."""
+        """Agreeing strong sources: the SCM workdir is still preferred."""
         _git_init(tmp_path)
+        subprocess.run(
+            ["git", "tag", "3.0.0"], cwd=tmp_path, check=True, capture_output=True
+        )
         (tmp_path / "PKG-INFO").write_text(
             "Metadata-Version: 2.1\nName: pkg\nVersion: 3.0.0\n",
             encoding="utf-8",
@@ -178,6 +181,24 @@ class TestDiscoverWorkdirFallback:
         result = discover_workdir(config)
         assert result is not None
         assert isinstance(result, ScmWorkdir)
+
+    def test_conflicting_scm_and_pkginfo_is_rejected(self, tmp_path: Path) -> None:
+        """git and PKG-INFO disagreeing must be reported, not resolved silently."""
+        from vcs_versioning._source_consistency import (
+            VersionSourceConsistencyError,
+        )
+
+        _git_init(tmp_path)
+        subprocess.run(
+            ["git", "tag", "1.2"], cwd=tmp_path, check=True, capture_output=True
+        )
+        (tmp_path / "PKG-INFO").write_text(
+            "Metadata-Version: 2.1\nName: pkg\nVersion: 1.3\n",
+            encoding="utf-8",
+        )
+        config = Configuration(relative_to=str(tmp_path / "pyproject.toml"))
+        with pytest.raises(VersionSourceConsistencyError, match="PKG-INFO"):
+            discover_workdir(config)
 
     def test_static_fallback_with_fallback_version(self, tmp_path: Path) -> None:
         config = Configuration(

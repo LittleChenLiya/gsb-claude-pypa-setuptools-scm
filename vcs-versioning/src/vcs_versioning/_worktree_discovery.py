@@ -58,6 +58,57 @@ def _verify_project_path(workdir: ScmWorkdir, config: Configuration) -> bool:
     return False
 
 
+def _check_git_vs_pkginfo(workdir: ScmWorkdir) -> None:
+    """Cross-check the two strong sources: a live git checkout and PKG-INFO.
+
+    Only plain git participates on the VCS side (workdirs whose
+    ``version_source_category`` is ``"git"``), and only a populated
+    ``PKG-INFO`` on the file side.  Unexpanded archival placeholders never
+    get here (they are not strong sources), and static/parent-directory
+    fallbacks are out of scope.  When both strong sources exist they must
+    agree; a mismatch raises instead of letting one silently win.
+    """
+    from ._source_consistency import (
+        GIT_SOURCE,
+        VersionSource,
+        check_version_sources_consistency,
+        pkginfo_source,
+        version_from_scm_version,
+    )
+
+    if workdir.version_source_category != GIT_SOURCE:
+        return
+
+    try:
+        git_version = workdir.get_scm_version()
+    except Exception:
+        log.debug(
+            "git workdir %s failed to provide a version", workdir.path, exc_info=True
+        )
+        return
+    if git_version is None:
+        return
+
+    sources = [
+        VersionSource(
+            category=GIT_SOURCE,
+            version=version_from_scm_version(git_version),
+        )
+    ]
+    # The project directory (nested in a monorepo) and the checkout root may
+    # each carry a PKG-INFO; cross-check every populated one found.
+    for pkginfo_dir in {workdir.project_root, workdir.path}:
+        try:
+            source = pkginfo_source(pkginfo_dir, workdir.config)
+        except Exception:
+            log.debug("PKG-INFO probe failed at %s", pkginfo_dir, exc_info=True)
+            continue
+        if source is not None:
+            sources.append(source)
+
+    check_version_sources_consistency(sources)
+
+
 def _load_discovery_factories() -> list[tuple[str, DiscoveryFactory]]:
     """Load all factories from ``vcs_versioning.discover_workdir`` EPs."""
     eps = entry_points(group="vcs_versioning.discover_workdir")
@@ -120,6 +171,7 @@ def discover_workdir(config: Configuration) -> AnyWorkdir | None:
                 f"{config.project_path!r} but SCM root at {result.path} "
                 f"yields {result.project_path!r}"
             )
+        _check_git_vs_pkginfo(result)
         log.info(
             "discovered SCM workdir %s (factory=%s)", type(result).__name__, ep_name
         )
