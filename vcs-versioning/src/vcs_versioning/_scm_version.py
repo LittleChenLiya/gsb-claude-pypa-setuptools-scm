@@ -229,6 +229,13 @@ class ScmVersion:
     """the branch name if any"""
     node_date: date | None = None
     """the date of the commit if available"""
+    shallow: bool = False
+    """whether the version was derived from a shallow repository
+
+    a shallow repository has truncated history, so distances counted
+    from it may be incomplete; sources without VCS history at all
+    (exported archives, metadata files) never set this marker
+    """
     time: datetime = dataclasses.field(default_factory=_source_epoch_or_utc_now)
     """the current time or source epoch time
     only set for unit-testing version schemes
@@ -368,6 +375,7 @@ class _ScmVersionKwargs(TypedDict, total=False):
     preformatted: bool
     branch: str | None
     node_date: date | None
+    shallow: bool
     time: datetime
 
 
@@ -381,6 +389,7 @@ def meta(
     branch: str | None = None,
     config: _config.Configuration,
     node_date: date | None = None,
+    shallow: bool = False,
     time: datetime | None = None,
 ) -> ScmVersion:
     parsed_version: _Version | None
@@ -405,6 +414,7 @@ def meta(
         "preformatted": preformatted,
         "branch": branch,
         "node_date": node_date,
+        "shallow": shallow,
     }
     if time is not None:
         kwargs["time"] = time

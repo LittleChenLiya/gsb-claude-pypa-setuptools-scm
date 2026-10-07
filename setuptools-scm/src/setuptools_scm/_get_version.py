@@ -50,6 +50,7 @@ def get_version(
     version_cls: Any | None = None,
     normalize: bool = True,
     search_parent_directories: bool = False,
+    fail_on_shallow: bool = False,
     scm: dict[str, Any] | None = None,
 ) -> str:
     from vcs_versioning._environment import VcsEnvironment
@@ -75,6 +76,7 @@ def get_version(
             version_cls=version_cls,
             normalize=normalize,
             search_parent_directories=search_parent_directories,
+            fail_on_shallow=fail_on_shallow,
             scm=scm,
             _env=env,
         )

@@ -349,6 +349,18 @@ class Configuration:
     search_parent_directories: bool = False
     project_path: str | None = None
 
+    fail_on_shallow: bool = False
+    """Whether to reject versions derived from a shallow repository.
+
+    When ``True``, version inference fails with a :class:`ValueError` if the
+    resulting :class:`~vcs_versioning._scm_version.ScmVersion` carries the
+    ``shallow`` source marker and the checkout is not exactly on a tag
+    (a tag checkout does not need history).  Sources without VCS history
+    (exported archives, metadata files) never trigger this.
+
+    Defaults to ``False``, preserving the historical version computation.
+    """
+
     parent: _t.PathT | None = None
 
     write_to_source: bool | None = None

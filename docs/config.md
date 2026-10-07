@@ -173,6 +173,15 @@ strict = true      # require tags to contain at least one dot
     available, `fallback_root` is used instead. This allows the same configuration
     to work in both scenarios without modification.
 
+`fail_on_shallow: bool = False`
+:   Reject versions derived from a shallow repository (truncated history).
+    The git backend marks such results with the `ScmVersion.shallow` source
+    marker; when this option is `True`, version inference fails with a
+    `ValueError` naming the actual source, unless the checkout is exactly on
+    a tag (which does not need history). Exported archives without `.git`
+    and other non-git sources never carry the marker and are never rejected.
+    Defaults to `False`, preserving the historical version computation.
+
 `normalize`
 :   A boolean flag indicating if the version string should be normalized.
     Defaults to `True`. Setting this to `False` is equivalent to setting

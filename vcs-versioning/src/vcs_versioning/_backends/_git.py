@@ -745,7 +745,9 @@ def _git_parse_inner(
     if node_date is None:
         node_date = datetime.now(timezone.utc).date()
 
-    return dataclasses.replace(version, branch=branch, node_date=node_date)
+    return dataclasses.replace(
+        version, branch=branch, node_date=node_date, shallow=wd.is_shallow()
+    )
 
 
 def _git_parse_describe(

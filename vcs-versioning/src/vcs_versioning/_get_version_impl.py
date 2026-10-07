@@ -61,13 +61,40 @@ def _finalize(
     return version_string
 
 
-def _resolve_version(config: Configuration) -> ScmVersion | None:
-    """Run the version pipeline: pretend -> discovery -> legacy EPs.
+def _fail_if_shallow_derivation(scm_version: ScmVersion, config: Configuration) -> None:
+    """Reject a version derived from a shallow repository when configured to.
 
-    Discovery handles ``config.parse`` via ``LegacyParseWorkdir`` (deprecated).
+    A checkout exactly on a tag does not need history, so it is allowed --
+    mirroring the ``fail_on_shallow`` git pre-parse behavior.  The error
+    message keeps the actual source the incomplete derivation came from.
+    """
+    if not config.fail_on_shallow:
+        return
+    if not scm_version.shallow or scm_version.distance == 0:
+        return
+    raise ValueError(
+        f"the version for {config.absolute_root} was derived from a shallow"
+        " repository, so the inferred history may be incomplete."
+        ' Correct with "git fetch --unshallow", or unset fail_on_shallow.'
+    )
+
+
+def _resolve_version(config: Configuration) -> ScmVersion | None:
+    """Run the version pipeline and enforce result-level source policies.
 
     Returns the raw ``ScmVersion`` (before metadata overrides are applied) or
     ``None`` when no version could be determined.
+    """
+    scm_version = _resolve_version_pipeline(config)
+    if scm_version is not None:
+        _fail_if_shallow_derivation(scm_version, config)
+    return scm_version
+
+
+def _resolve_version_pipeline(config: Configuration) -> ScmVersion | None:
+    """Run the version pipeline: pretend -> discovery -> legacy EPs.
+
+    Discovery handles ``config.parse`` via ``LegacyParseWorkdir`` (deprecated).
     """
     from ._worktree_discovery import discover_workdir
 
@@ -325,6 +352,7 @@ def get_version(
     version_cls: type[_VersionType] | str | None = None,
     normalize: bool = True,
     search_parent_directories: bool = False,
+    fail_on_shallow: bool = False,
     scm: dict[str, Any] | None = None,
     _env: VcsEnvironment | None = None,
 ) -> str:
@@ -372,6 +400,7 @@ def get_version(
         dist_name=dist_name,
         version_cls=version_cls,
         search_parent_directories=search_parent_directories,
+        fail_on_shallow=fail_on_shallow,
         scm=scm_config,
         tag=tag_config,
         _env=_env,
