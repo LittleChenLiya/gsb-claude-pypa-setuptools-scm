@@ -128,6 +128,16 @@ def write_version_to_path(
         scm_version=scm_version or DummyScmVersion(),
     )
 
+    new_bytes = content.encode("utf-8")
+    if target.is_file():
+        try:
+            existing_bytes = target.read_bytes()
+        except OSError:
+            existing_bytes = None
+        if existing_bytes == new_bytes:
+            log.debug("content of %s is unchanged, skipping write", target)
+            return
+
     target.write_text(content, encoding="utf-8")
 
 

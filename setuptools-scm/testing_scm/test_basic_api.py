@@ -236,6 +236,61 @@ def test_dump_version(tmp_path: Path) -> None:
     ast.parse(read("fourth.py"))
 
 
+def test_dump_version_same_content_skips_write(tmp_path: Path) -> None:
+    version = "1.0"
+    scm_version = meta(version, config=c)
+    target = tmp_path / "version.txt"
+
+    dump_version(tmp_path, version, "version.txt", scm_version=scm_version)
+    first_stat = target.stat()
+
+    dump_version(tmp_path, version, "version.txt", scm_version=scm_version)
+    second_stat = target.stat()
+
+    assert second_stat.st_mtime_ns == first_stat.st_mtime_ns
+    assert second_stat.st_ino == first_stat.st_ino
+    assert target.read_bytes() == b"1.0"
+
+
+def test_dump_version_different_content_rewrites(tmp_path: Path) -> None:
+    scm_version = meta("1.0", config=c)
+    target = tmp_path / "version.txt"
+
+    dump_version(tmp_path, "1.0", "version.txt", scm_version=scm_version)
+    assert target.read_bytes() == b"1.0"
+
+    scm_version = meta("1.1", config=c)
+    dump_version(tmp_path, "1.1", "version.txt", scm_version=scm_version)
+    assert target.read_bytes() == b"1.1"
+
+    # a trailing newline difference must be detected and rewritten exactly
+    target.write_bytes(b"1.1\n")
+    dump_version(tmp_path, "1.1", "version.txt", scm_version=scm_version)
+    assert target.read_bytes() == b"1.1"
+
+
+def test_dump_version_bad_template_keeps_old_file(tmp_path: Path) -> None:
+    version = "1.0"
+    scm_version = meta(version, config=c)
+    target = tmp_path / "version.py"
+
+    dump_version(tmp_path, version, "version.py", scm_version=scm_version)
+    old_bytes = target.read_bytes()
+    old_mtime_ns = target.stat().st_mtime_ns
+
+    with pytest.raises(KeyError, match="missing_key"):
+        dump_version(
+            tmp_path,
+            version,
+            "version.py",
+            scm_version=scm_version,
+            template="__version__ = {missing_key!r}\n",
+        )
+
+    assert target.read_bytes() == old_bytes
+    assert target.stat().st_mtime_ns == old_mtime_ns
+
+
 def test_parse_plain_fails(recwarn: pytest.WarningsRecorder) -> None:
     def parse(root: object) -> str:
         return "tricked you"
