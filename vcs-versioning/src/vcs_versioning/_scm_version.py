@@ -54,6 +54,7 @@ class VersionExpectations(TypedDict, total=False):
     preformatted: bool
     node_date: date | None
     time: datetime | None
+    shallow: bool
 
 
 @dataclasses.dataclass
@@ -234,6 +235,14 @@ class ScmVersion:
     only set for unit-testing version schemes
     for real usage it must be `now(utc)` or `SOURCE_EPOCH`
     """
+    shallow: bool = False
+    """whether the version was inferred from a shallow (incomplete) git history
+
+    only the git backend sets this, and only when the checkout is shallow
+    *and* HEAD is not an exact tag -- an exact tag needs no history.
+    exported archives (``.git_archival.txt``) and other non-repository
+    sources never set it, so a missing ``.git`` is not mistaken for shallow.
+    """
 
     @property
     def exact(self) -> bool:
@@ -244,6 +253,23 @@ class ScmVersion:
     def short_node(self) -> str | None:
         """Return the node formatted for output."""
         return _format_node_for_output(self.node)
+
+    def require_complete_history(self, source: str | None = None) -> ScmVersion:
+        """Return this version, unless it was inferred from incomplete history.
+
+        Lets callers opt into rejecting versions whose distance may be wrong
+        because the git clone was shallow.  *source* should name where the
+        inference happened (e.g. the repository root); it is kept in the
+        error so the rejection points at the actual origin.
+        """
+        if not self.shallow:
+            return self
+        origin = f" at {source}" if source is not None else ""
+        raise ValueError(
+            f"version {self.tag} was inferred from a shallow git repository"
+            f"{origin}; the incomplete history may produce a wrong distance."
+            ' Correct with "git fetch --unshallow".'
+        )
 
     def __repr__(self) -> str:
         return (
@@ -312,6 +338,7 @@ class ScmVersion:
             "preformatted": lambda: self.preformatted,
             "node_date": lambda: self.node_date,
             "time": lambda: self.time,
+            "shallow": lambda: self.shallow,
         }
 
         # Build actual values dict

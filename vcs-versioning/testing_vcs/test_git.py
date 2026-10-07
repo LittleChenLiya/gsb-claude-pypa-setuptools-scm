@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import os
 import shutil
 import subprocess
@@ -19,12 +20,14 @@ import vcs_versioning._file_finders._git
 from vcs_versioning import Configuration
 from vcs_versioning._backends import _git
 from vcs_versioning._file_finders._git import git_find_files
+from vcs_versioning._get_version_impl import get_version
 from vcs_versioning._run_cmd import (
     CommandNotFoundError,
     CompletedProcess,
     has_command,
     run,
 )
+from vcs_versioning._scm_version import meta
 from vcs_versioning._version_cls import NonNormalizedVersion
 from vcs_versioning._version_schemes import format_version
 from vcs_versioning.test_api import DebugMode, WorkDir
@@ -287,6 +290,85 @@ def test_git_shallow_autocorrect(
     msg = recwarn.pop()
     assert "git fetch was used to rectify" in str(msg.message)
     git.parse(str(shallow_wd), Configuration(), pre_parse=git.fail_on_shallow)
+
+
+def test_git_parse_marks_shallow_result(
+    shallow_wd: Path, recwarn: pytest.WarningsRecorder
+) -> None:
+    version = git.parse(shallow_wd, Configuration())
+    assert version is not None
+    assert version.shallow is True
+
+
+@pytest.mark.issue(1241)
+def test_git_parse_shallow_exact_tag_not_marked(shallow_tagged_wd: Path) -> None:
+    version = git.parse(shallow_tagged_wd, Configuration())
+    assert version is not None
+    assert version.shallow is False
+
+
+def test_git_parse_full_history_not_marked(wd: WorkDir) -> None:
+    wd.commit_testfile()
+    version = git.parse(wd.cwd, Configuration())
+    assert version is not None
+    assert version.shallow is False
+
+
+def test_require_complete_history_in_memory() -> None:
+    version = meta("1.0", config=Configuration())
+    assert version.shallow is False
+    assert version.require_complete_history() is version
+
+    shallow_version = dataclasses.replace(version, shallow=True)
+    with pytest.raises(ValueError, match="shallow git repository") as excinfo:
+        shallow_version.require_complete_history(source="in-memory-fixture")
+    # the rejection keeps the actual source the caller passed in
+    assert "in-memory-fixture" in str(excinfo.value)
+
+
+def test_require_complete_history_rejects_shallow(
+    shallow_wd: Path, recwarn: pytest.WarningsRecorder
+) -> None:
+    version = git.parse(shallow_wd, Configuration())
+    assert version is not None
+    with pytest.raises(ValueError, match="shallow git repository") as excinfo:
+        version.require_complete_history(source=str(shallow_wd))
+    assert str(shallow_wd) in str(excinfo.value)
+
+
+def test_git_archival_not_marked_shallow(tmp_path: Path) -> None:
+    # an exported archive has no .git at all and must not read as shallow
+    (tmp_path / ".git_archival.txt").write_text(
+        "node: 0123456789abcdef0123456789abcdef01234567\n"
+        "describe-name: v1.2.3-2-g0123456\n",
+        encoding="utf-8",
+    )
+    version = git.parse_archival(tmp_path, Configuration())
+    assert version is not None
+    assert version.shallow is False
+    assert version.require_complete_history(source=str(tmp_path)) is version
+
+
+def test_get_version_reject_shallow(shallow_wd: Path) -> None:
+    with pytest.warns(UserWarning, match="is shallow"), pytest.raises(
+        ValueError, match="shallow git repository"
+    ) as excinfo:
+        get_version(root=shallow_wd, fallback_root=shallow_wd, reject_shallow=True)
+    # the rejection names the actual repository root
+    assert str(shallow_wd) in str(excinfo.value)
+
+
+def test_get_version_allows_shallow_by_default(shallow_wd: Path) -> None:
+    with pytest.warns(UserWarning, match="is shallow"):
+        version = get_version(root=shallow_wd, fallback_root=shallow_wd)
+    assert version
+
+
+def test_get_version_reject_shallow_non_git_path(tmp_path: Path) -> None:
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    with pytest.raises(LookupError, match="unable to detect version"):
+        get_version(root=plain, fallback_root=plain, reject_shallow=True)
 
 
 def test_find_files_stop_at_root_git(wd: WorkDir) -> None:

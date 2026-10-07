@@ -177,11 +177,16 @@ def write_version_files(
 
 
 def _get_version(
-    config: Configuration, force_write_version_files: bool | None = None
+    config: Configuration,
+    force_write_version_files: bool | None = None,
+    reject_shallow: bool = False,
 ) -> str | None:
     scm_version = _resolve_version(config)
     if scm_version is None:
         return None
+
+    if reject_shallow:
+        scm_version.require_complete_history(source=str(config.absolute_root))
 
     if force_write_version_files is None:
         force_write_version_files = True
@@ -326,6 +331,7 @@ def get_version(
     normalize: bool = True,
     search_parent_directories: bool = False,
     scm: dict[str, Any] | None = None,
+    reject_shallow: bool = False,
     _env: VcsEnvironment | None = None,
 ) -> str:
     """
@@ -333,6 +339,11 @@ def get_version(
     be resolved. Typically called by a script or module that is not
     in the root of the repository to direct setuptools-scm to the
     root of the repository by supplying ``__file__``.
+
+    If reject_shallow is True, versions inferred from a shallow git
+    clone (incomplete history) are rejected with a ValueError naming
+    the repository root.  The default False keeps the historical behavior
+    of merely warning.
     """
 
     version_cls = _validate_version_cls(version_cls, normalize)
@@ -376,7 +387,9 @@ def get_version(
         tag=tag_config,
         _env=_env,
     )
-    maybe_version = _get_version(config, force_write_version_files=True)
+    maybe_version = _get_version(
+        config, force_write_version_files=True, reject_shallow=reject_shallow
+    )
 
     if maybe_version is None:
         _version_missing(config)

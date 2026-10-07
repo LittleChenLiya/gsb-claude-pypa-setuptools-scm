@@ -745,7 +745,17 @@ def _git_parse_inner(
     if node_date is None:
         node_date = datetime.now(timezone.utc).date()
 
-    return dataclasses.replace(version, branch=branch, node_date=node_date)
+    # Mark versions inferred from incomplete history so callers can reject
+    # them via ScmVersion.require_complete_history.  An exact tag checkout
+    # needs no history, so -- as in warn_on_shallow -- it is not marked.
+    # Non-shallow workdirs short-circuit on the .git/shallow file check and
+    # pay no extra subprocess; archival parsing never reaches this code and
+    # therefore never mistakes a missing .git for a shallow clone.
+    shallow = wd.is_shallow() and not wd.head_is_exact_tag()
+
+    return dataclasses.replace(
+        version, branch=branch, node_date=node_date, shallow=shallow
+    )
 
 
 def _git_parse_describe(
