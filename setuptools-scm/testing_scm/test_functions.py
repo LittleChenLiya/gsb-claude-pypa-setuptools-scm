@@ -5,6 +5,7 @@ Core version scheme tests have been moved to vcs-versioning/testing_vcs/test_ver
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 
@@ -174,3 +175,139 @@ def test_write_version_to_path_deprecation_warning_missing(tmp_path: Path) -> No
 
     # Check that commit_id is set to None when scm_version is None
     assert "__commit_id__ = commit_id = None" in content
+
+
+def test_write_version_to_path_skips_unchanged_content(tmp_path: Path) -> None:
+    """Same content must short-circuit: no rewrite, mtime preserved."""
+    from vcs_versioning._dump_version import write_version_to_path
+
+    target_file = tmp_path / "version.txt"
+    version = "1.2.3"
+    scm_version = meta(version, config=c)
+
+    assert write_version_to_path(
+        target_file, template=None, version=version, scm_version=scm_version
+    )
+
+    expected = target_file.read_bytes()
+    # pin an old mtime so a rewrite would be visible regardless of fs granularity
+    old_mtime_ns = 1_000_000_000
+    os.utime(target_file, ns=(old_mtime_ns, old_mtime_ns))
+
+    changed = write_version_to_path(
+        target_file, template=None, version=version, scm_version=scm_version
+    )
+
+    assert changed is False
+    assert target_file.read_bytes() == expected
+    assert target_file.stat().st_mtime_ns == old_mtime_ns
+
+
+def test_write_version_to_path_rewrites_changed_content(tmp_path: Path) -> None:
+    """Different content is safely replaced and the new content is accurate."""
+    from vcs_versioning._dump_version import write_version_to_path
+
+    target_file = tmp_path / "version.txt"
+    scm_version = meta("1.2.3", config=c)
+
+    write_version_to_path(
+        target_file, template=None, version="1.2.3", scm_version=scm_version
+    )
+    old_mtime_ns = 1_000_000_000
+    os.utime(target_file, ns=(old_mtime_ns, old_mtime_ns))
+
+    new_scm_version = meta("2.0.0", config=c)
+    changed = write_version_to_path(
+        target_file, template=None, version="2.0.0", scm_version=new_scm_version
+    )
+
+    assert changed is True
+    assert target_file.read_text(encoding="utf-8") == "2.0.0"
+    assert target_file.stat().st_mtime_ns != old_mtime_ns
+
+
+def test_write_version_to_path_bad_template_keeps_old_file(tmp_path: Path) -> None:
+    """A failing render leaves the previously written file untouched."""
+    from vcs_versioning._dump_version import write_version_to_path
+
+    scm_version = meta("1.2.3", config=c)
+
+    # unknown suffix -> ValueError while validating the default template
+    bad_suffix = tmp_path / "VERSION"
+    bad_suffix.write_text("precious old content", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"^bad file format:"):
+        write_version_to_path(
+            bad_suffix, template=None, version="9.9.9", scm_version=scm_version
+        )
+    assert bad_suffix.read_text(encoding="utf-8") == "precious old content"
+
+    # unknown placeholder in the template -> KeyError while rendering
+    target_file = tmp_path / "version.txt"
+    write_version_to_path(
+        target_file, template="{version}", version="1.2.3", scm_version=scm_version
+    )
+    old_bytes = target_file.read_bytes()
+    old_mtime_ns = target_file.stat().st_mtime_ns
+    with pytest.raises(KeyError):
+        write_version_to_path(
+            target_file,
+            template="{does_not_exist}",
+            version="1.2.3",
+            scm_version=scm_version,
+        )
+    assert target_file.read_bytes() == old_bytes
+    assert target_file.stat().st_mtime_ns == old_mtime_ns
+
+
+def test_write_version_to_path_compares_bytes_exactly(tmp_path: Path) -> None:
+    """Encoding and trailing-newline differences count as a change."""
+    from vcs_versioning._dump_version import write_version_to_path
+
+    target_file = tmp_path / "version.txt"
+    scm_version = meta("1.2.3", config=c)
+
+    # pre-existing content without the template's trailing newline -> rewrite
+    target_file.write_text("1.2.3", encoding="utf-8")
+    changed = write_version_to_path(
+        target_file, template="{version}\n", version="1.2.3", scm_version=scm_version
+    )
+    assert changed is True
+    assert target_file.read_bytes() == b"1.2.3\n"
+
+    # same rendered bytes now -> short-circuit
+    old_mtime_ns = 1_000_000_000
+    os.utime(target_file, ns=(old_mtime_ns, old_mtime_ns))
+    changed = write_version_to_path(
+        target_file, template="{version}\n", version="1.2.3", scm_version=scm_version
+    )
+    assert changed is False
+    assert target_file.stat().st_mtime_ns == old_mtime_ns
+
+    # a differently encoded character is detected via the byte comparison
+    unicode_target = tmp_path / "unicode.txt"
+    unicode_target.write_text("\u00e9\n", encoding="latin-1")
+    changed = write_version_to_path(
+        unicode_target,
+        template="\u00e9\n",
+        version="1.2.3",
+        scm_version=scm_version,
+    )
+    assert changed is True
+    assert unicode_target.read_text(encoding="utf-8") == "\u00e9\n"
+
+
+def test_dump_version_skips_unchanged_content(tmp_path: Path) -> None:
+    """dump_version (the write_to path) keeps the no-op rewrite behavior."""
+    version = "1.2.3"
+    scm_version = meta(version, config=c)
+
+    dump_version(tmp_path, version, "first.txt", scm_version=scm_version)
+    target_file = tmp_path / "first.txt"
+    expected = target_file.read_bytes()
+    old_mtime_ns = 1_000_000_000
+    os.utime(target_file, ns=(old_mtime_ns, old_mtime_ns))
+
+    dump_version(tmp_path, version, "first.txt", scm_version=scm_version)
+
+    assert target_file.read_bytes() == expected
+    assert target_file.stat().st_mtime_ns == old_mtime_ns

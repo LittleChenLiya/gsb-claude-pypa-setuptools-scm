@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -96,23 +98,73 @@ def _validate_template(target: Path, template: str | None) -> str:
         return template
 
 
+def _write_text_if_changed(target: Path, content: str) -> bool:
+    """Write *content* to *target*, skipping the rewrite when unchanged.
+
+    The comparison is byte-exact on the utf-8 encoded content, so differing
+    encodings of the same characters and a missing or extra trailing newline
+    both count as changes and trigger a rewrite.
+
+    Changed content is written via a temporary file in the same directory and
+    then ``os.replace``d into place, so a failing write never leaves a
+    truncated/partial target behind.
+
+    Returns:
+        True when the file was (re)written, False when it already held the
+        exact content (its mtime is left untouched in that case).
+    """
+    try:
+        old_content = target.read_bytes()
+    except FileNotFoundError:
+        old_content = None
+    new_content = content.encode("utf-8")
+    if old_content == new_content:
+        log.debug("skip unchanged version file: %s", target)
+        return False
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=target.name + ".", suffix=".tmp", dir=str(target.parent)
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(new_content)
+        os.replace(tmp_path, target)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+    log.debug("wrote version file: %s", target)
+    return True
+
+
 def write_version_to_path(
     target: Path,
     template: str | None,
     version: str,
     scm_version: ScmVersion | MISSING | None = MISSING_VAL,
-) -> None:
+) -> bool:
     """Write version information to a file using a template.
+
+    The content is rendered first; if rendering fails the (possibly existing)
+    target file is left untouched.  When the rendered content matches the
+    current file byte-for-byte (same utf-8 bytes, including the trailing
+    newline), the write is skipped so the file's mtime does not change.
+    Different content is installed through a safe temp-file + os.replace
+    swap.
 
     Args:
         target: The target file path to write to
         template: Template string or None to use default based on file extension
         version: The version string to write
         scm_version: Optional ScmVersion object for additional metadata
+
+    Returns:
+        True when the file was (re)written, False when its content was
+        unchanged and the write was short-circuited.
     """
     final_template = _validate_template(target, template)
     log.debug("dump %s into %s", version, target)
-    version_tuple = _version_as_tuple(version)
     if scm_version is MISSING_VAL:
         warnings.warn(
             "write_version_to_path called without scm_version parameter. "
@@ -122,13 +174,14 @@ def write_version_to_path(
             stacklevel=2,
         )
 
+    version_tuple = _version_as_tuple(version)
     content = final_template.format(
         version=version,
         version_tuple=version_tuple,
         scm_version=scm_version or DummyScmVersion(),
     )
 
-    target.write_text(content, encoding="utf-8")
+    return _write_text_if_changed(target, content)
 
 
 def dump_version(

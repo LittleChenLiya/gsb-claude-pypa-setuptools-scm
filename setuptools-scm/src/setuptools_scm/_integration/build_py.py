@@ -365,9 +365,7 @@ class ScmVersionFileMixin(_MixinBase):
 
         Returns the absolute path of the written file, or None on failure.
         """
-        from vcs_versioning._dump_version import DummyScmVersion
-        from vcs_versioning._dump_version import _validate_template
-        from vcs_versioning._version_cls import _version_as_tuple
+        from vcs_versioning._dump_version import write_version_to_path
 
         try:
             _sanitize_relative_path(relative_path)
@@ -379,20 +377,17 @@ class ScmVersionFileMixin(_MixinBase):
         log.debug("Writing version file: %s", target)
 
         try:
-            final_template = _validate_template(target, template)
+            write_version_to_path(
+                target,
+                template=template,
+                version=version,
+                # always pass explicitly: the missing-argument form only
+                # exists to warn legacy callers of write_version_to_path
+                scm_version=scm_version,
+            )
         except ValueError as e:
             log.warning("Skipping version file %s: %s", target, e)
             return None
-
-        version_tuple = _version_as_tuple(version)
-        content = final_template.format(
-            version=version,
-            version_tuple=version_tuple,
-            scm_version=scm_version or DummyScmVersion(),
-        )
-
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8")
         log.info("Wrote version file: %s", target)
         return str(target)
 
